@@ -19,6 +19,7 @@ test_expect_success \
     'Test that "git-add -- -q" works' \
     'touch -- -q && git-add -- -q'
 
+test "$no_symlinks" || {
 test_expect_success \
 	'git-add: Test that executable bit is not used if core.filemode=0' \
 	'git config core.filemode 0 &&
@@ -70,6 +71,7 @@ test_expect_success \
 	 120000" "*xfoo3) echo ok;;
 	 *) echo fail; git-ls-files --stage xfoo3; (exit 1);;
 	 esac'
+}
 
 test_expect_success '.gitignore test setup' '
 	echo "*.ig" >.gitignore &&
