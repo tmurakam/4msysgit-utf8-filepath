@@ -1004,7 +1004,7 @@ ifneq (,$(findstring MINGW,$(uname_S)))
 	COMPAT_CFLAGS += -Werror -Wno-pointer-to-int-cast \
 	        -Wold-style-definition -Wdeclaration-after-statement
 	COMPAT_OBJS += compat/mingw.o compat/fnmatch/fnmatch.o compat/winansi.o \
-		compat/win32/pthread.o
+		compat/win32/pthread.o compat/utf8wrapper.o
 	EXTLIBS += -lws2_32
 	PTHREAD_LIBS =
 	X = .exe

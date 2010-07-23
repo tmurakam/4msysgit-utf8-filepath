@@ -1,6 +1,8 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
+#include "utf8wrapper.h"
+
 /*
  * things that are not available in header files
  */
@@ -290,6 +292,7 @@ int main(int argc, const char **argv) \
 	_setmode(_fileno(stdout), _O_BINARY); \
 	_setmode(_fileno(stderr), _O_BINARY); \
 	argv[0] = xstrdup(_pgmptr); \
+	utf8_argv(argc, argv); \
 	return mingw_main(argc, argv); \
 } \
 static int mingw_main(c,v)
