@@ -74,6 +74,12 @@ FILE * fopen(const char *filename, const char *mode)
 	return _wfopen(utf82wchar(filename), utf82wchar(mode));
 }
 
+#undef freopen
+FILE * freopen(const char *filename, const char *mode, FILE *stream)
+{
+	return _wfreopen(utf82wchar(filename), utf82wchar(mode), stream);
+}
+
 #undef access
 int access(const char *pathname, int mode)
 {
@@ -257,6 +263,10 @@ WINBASEAPI int WINAPI FindNextFileA(HANDLE handle, WIN32_FIND_DATAA *data)
 
 //////////////////////////////////////////////////////////////
 // convert argv
+
+#include "../strbuf.h"
+#include "../utf8.h"
+
 void utf8_argv(int argc, const char **argv)
 {
 	int i, n;
@@ -267,21 +277,24 @@ void utf8_argv(int argc, const char **argv)
 	// try to detect encoding
 	isUtf8 = 1;
 	for (i = 0; i < argc; i++) {
-		n = MultiByteToWideChar(CP_UTF8, 0, argv[i], -1, NULL, 0);
-		if (n < 0) {
+		if (!is_utf8(argv[i])) {
 			isUtf8 = 0;
 			break;
 		}
 	}
-	if (isUtf8) return; // no need to convert
+	if (isUtf8) {
+		//printf("no need to convert to UTF-8\n");
+		return; // no need to convert
+	}
+	//printf("convert to UTF-8\n");
 
 	// convert ansi to UTF-8
 	for (i = 0; i < argc; i++) {
 		n = MultiByteToWideChar(CP_ACP, 0, argv[i], -1, buffer, sizeof(buffer));
-		if (n < 0) continue; // TBD
+		if (n == 0) continue; // TBD
 
 		n = WideCharToMultiByte(CP_UTF8, 0, buffer, -1, utf8, sizeof(utf8), NULL, NULL);
-		if (n < 0) continue; // TBD
+		if (n == 0) continue; // TBD
 
 		argv[i] = strdup(utf8);
 	}
