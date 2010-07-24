@@ -9,9 +9,11 @@
 #include "../strbuf.h"
 #include "../utf8.h"
 
+#define	MAX_STRING	32768
+
 static wchar_t *utf82wchar(const char *s)
 {
-	static wchar_t buffer[10][PATH_MAX];
+	static wchar_t buffer[6][MAX_STRING];
 	static int counter = 0;
 	int n;
 
@@ -22,7 +24,7 @@ static wchar_t *utf82wchar(const char *s)
 		counter = 0;
 	}
 
-	n = MultiByteToWideChar(CP_UTF8, 0, s, -1, buffer[counter], PATH_MAX);
+	n = MultiByteToWideChar(CP_UTF8, 0, s, -1, buffer[counter], MAX_STRING);
 	if (n > 0) {
 		return buffer[counter];
 	}
@@ -31,7 +33,7 @@ static wchar_t *utf82wchar(const char *s)
 
 static char *wchar2utf8(const wchar_t *s)
 {
-	static char buffer[10][PATH_MAX];
+	static char buffer[6][MAX_STRING];
 	static int counter = 0;
 	int n;
 
@@ -42,7 +44,7 @@ static char *wchar2utf8(const wchar_t *s)
 		counter = 0;
 	}
 
-	n = WideCharToMultiByte(CP_UTF8, 0, s, -1, buffer[counter], PATH_MAX, NULL, NULL);
+	n = WideCharToMultiByte(CP_UTF8, 0, s, -1, buffer[counter], MAX_STRING, NULL, NULL);
 	if (n > 0) {
 		return buffer[counter];
 	}
