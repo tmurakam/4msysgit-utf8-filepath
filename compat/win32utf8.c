@@ -264,10 +264,10 @@ WINBASEAPI int WINAPI FindNextFileA(HANDLE handle, WIN32_FIND_DATAA *data)
 //////////////////////////////////////////////////////////////
 // convert argv
 
+#if 0
 #include "../strbuf.h"
 #include "../utf8.h"
 
-#if 0
 void convert_argv_utf8(int argc, const char **argv)
 {
 	int i, n;
@@ -301,6 +301,8 @@ void convert_argv_utf8(int argc, const char **argv)
 	}
 }
 #endif
+
+#include <shellapi.h>
 
 void convert_argv_utf8(int argc, const char **argv)
 {
