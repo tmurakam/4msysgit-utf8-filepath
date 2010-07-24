@@ -6,6 +6,8 @@
 
 #include "../git-compat-util.h"
 #include "win32utf8.h"
+#include "../strbuf.h"
+#include "../utf8.h"
 
 static wchar_t *utf82wchar(const char *s)
 {
@@ -145,6 +147,85 @@ char *getcwd(char *pointer, int len)
 ////////////////////////////////////////////////////////////////
 // Win32 APIs
 
+WINBASEAPI BOOL WINAPI CreateProcessA(
+	LPCSTR lpApplicationName,
+	LPSTR lpCommandLine,
+	LPSECURITY_ATTRIBUTES lpProcessAttributes,
+	LPSECURITY_ATTRIBUTES lpThreadAttributes,
+	BOOL bInheritHandles,
+	DWORD dwCreationFlags,
+	PVOID lpEnvironment,
+	LPCSTR lpCurrentDirectory,
+	LPSTARTUPINFOA lpStartupInfo,
+	LPPROCESS_INFORMATION lpProcessInformation)
+{
+	STARTUPINFOW si;
+	STARTUPINFOA *sa = lpStartupInfo;
+	BOOL ret;
+
+	// convert environemnt variables
+	wchar_t *wenv = NULL;
+	if (lpEnvironment) {
+		int len;
+		char *p;
+		wchar_t *wp;
+
+		p = lpEnvironment;
+		len = 0;
+		while (*p) {
+			len += utf8_strwidth(p) + 1;
+		}
+		len++;
+
+		wenv = malloc(len * sizeof(wchar_t));
+
+		p = lpEnvironment;
+		wp = wenv;
+		while (*p) {
+			wchar_t *w = utf82wchar(p);
+			wcscpy(wp, w);
+
+			p += strlen(p) + 1;
+			wp+= wcslen(wp) + 1;
+		}
+		*wp = 0;
+	}
+
+	// Convert startupinfo
+	memset(&si, 0, sizeof(si));
+	si.cb = sizeof(si);
+	si.lpDesktop = utf82wchar(sa->lpDesktop);
+	si.lpTitle = utf82wchar(sa->lpTitle);
+	si.dwX = sa->dwX;
+	si.dwY = sa->dwY;
+	si.dwXSize = sa->dwXSize;
+	si.dwYSize = sa->dwYSize;
+	si.dwXCountChars = sa->dwXCountChars;
+	si.dwYCountChars = sa->dwYCountChars;
+	si.dwFillAttribute = sa->dwFillAttribute;
+	si.dwFlags = sa->dwFlags;
+	si.wShowWindow = sa->wShowWindow;
+	si.hStdInput = sa->hStdInput;
+	si.hStdOutput = sa->hStdOutput;
+	si.hStdError = sa->hStdError;
+
+	ret = CreateProcessW(
+		utf82wchar(lpApplicationName),
+		utf82wchar(lpCommandLine),
+		lpProcessAttributes,
+		lpThreadAttributes,
+		bInheritHandles,
+		dwCreationFlags | CREATE_UNICODE_ENVIRONMENT,
+		wenv,
+		utf82wchar(lpCurrentDirectory),
+		&si,
+		lpProcessInformation);
+
+	free(wenv);
+	return ret;
+}
+
+
 WINBASEAPI HANDLE WINAPI CreateFileA(
 	LPCSTR lpFileName,
 	DWORD dwDesiredAccess,
@@ -263,9 +344,6 @@ WINBASEAPI int WINAPI FindNextFileA(HANDLE handle, WIN32_FIND_DATAA *data)
 
 //////////////////////////////////////////////////////////////
 // convert argv
-
-#include "../strbuf.h"
-#include "../utf8.h"
 
 void convert_argv_utf8(int argc, const char **argv)
 {
