@@ -162,9 +162,9 @@ WINBASEAPI BOOL WINAPI CreateProcessA(
 	STARTUPINFOW si;
 	STARTUPINFOA *sa = lpStartupInfo;
 	BOOL ret;
+	wchar_t *wenv = NULL;
 
 	// convert environemnt variables
-	wchar_t *wenv = NULL;
 	if (lpEnvironment) {
 		int len;
 		char *p;
@@ -174,6 +174,7 @@ WINBASEAPI BOOL WINAPI CreateProcessA(
 		len = 0;
 		while (*p) {
 			len += utf8_strwidth(p) + 1;
+			p += strlen(p) + 1;
 		}
 		len++;
 
