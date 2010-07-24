@@ -23,7 +23,7 @@ static wchar_t *utf82wchar(const char *s)
 	}
 
 	n = MultiByteToWideChar(CP_UTF8, 0, s, -1, buffer[counter], PATH_MAX);
-	if (n >= 0) {
+	if (n > 0) {
 		return buffer[counter];
 	}
 	return NULL;
@@ -43,7 +43,7 @@ static char *wchar2utf8(const wchar_t *s)
 	}
 
 	n = WideCharToMultiByte(CP_UTF8, 0, s, -1, buffer[counter], PATH_MAX, NULL, NULL);
-	if (n >= 0) {
+	if (n > 0) {
 		return buffer[counter];
 	}
 	return NULL;
@@ -346,36 +346,28 @@ WINBASEAPI int WINAPI FindNextFileA(HANDLE handle, WIN32_FIND_DATAA *data)
 //////////////////////////////////////////////////////////////
 // convert argv
 
+#include <shellapi.h>
+
 void convert_argv_utf8(int argc, const char **argv)
 {
-	int i, n;
-	wchar_t buffer[PATH_MAX];
-	char utf8[PATH_MAX];
-	int isUtf8;
+	int wargc;
+	wchar_t **wargv;
+	char **argv;
 
-	// try to detect encoding
-	isUtf8 = 1;
-	for (i = 0; i < argc; i++) {
-		if (!is_utf8(argv[i])) {
-			isUtf8 = 0;
-			break;
-		}
+	wargv = CommandLineToArgvW(GetCommandLineW(), &wargc);
+	if (!wargv) {
+		return;
 	}
-	if (isUtf8) {
-		//printf("no need to convert to UTF-8\n");
-		return; // no need to convert
+	if (wargc != argc) {
+		LocalFree(wargv);
+		return;
 	}
-	//printf("convert to UTF-8\n");
 
-	// convert ansi to UTF-8
-	for (i = 0; i < argc; i++) {
-		n = MultiByteToWideChar(CP_ACP, 0, argv[i], -1, buffer, sizeof(buffer));
-		if (n == 0) continue; // TBD
+	for (int i = 0; i < argc; i++) {
+		char *arg = wchar2utf8(wargv[i]);
+		if (!arg) continue;
 
-		n = WideCharToMultiByte(CP_UTF8, 0, buffer, -1, utf8, sizeof(utf8), NULL, NULL);
-		if (n == 0) continue; // TBD
-
-		argv[i] = strdup(utf8);
+		argv[i] = strdup(arg);
 	}
+	LocalFree(wargv);
 }
-
