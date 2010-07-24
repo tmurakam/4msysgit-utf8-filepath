@@ -6,7 +6,7 @@ WINBASEAPI int WINAPI CreateHardLinkW(const wchar_t *filename, const wchar_t *ex
 
 WINBASEAPI int WINAPI CreateSymbolicLinkA(const char *filename, const char *existingFilename, DWORD flags);
 
-void convert_argv_utf8(int argc, const char **argv);
+void convert_argv_utf8(int *pargc, char ***pargv);
 
 #endif
 

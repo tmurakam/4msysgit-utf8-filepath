@@ -166,6 +166,8 @@ BOOL WINAPI CreateProcessA(
 	BOOL ret;
 	wchar_t *wenv = NULL;
 
+	//fprintf(stderr, "CreateProcessA: '%s' '%s'\n", lpApplicationName, lpCommandLine); // ###
+
 	// convert environemnt variables
 	if (lpEnvironment) {
 		int len;
@@ -227,7 +229,6 @@ BOOL WINAPI CreateProcessA(
 	free(wenv);
 	return ret;
 }
-
 
 HANDLE WINAPI CreateFileA(
 	LPCSTR lpFileName,
@@ -336,26 +337,28 @@ int WINAPI FindNextFileA(HANDLE handle, WIN32_FIND_DATAA *data)
 
 #include <shellapi.h>
 
-void convert_argv_utf8(int argc, const char **argv)
+void convert_argv_utf8(int *pargc, char ***pargv)
 {
-	int wargc;
+	int argc;
 	wchar_t **wargv;
+	char **argv;
 	int i;
 
-	wargv = CommandLineToArgvW(GetCommandLineW(), &wargc);
+	wargv = CommandLineToArgvW(GetCommandLineW(), &argc);
 	if (!wargv) {
+		// oops!
 		return;
 	}
-	if (wargc != argc) {
-		LocalFree(wargv);
-		return;
-	}
+	argv = xcalloc(argc + 1, sizeof(char*));
+	argv[argc] = NULL;
 
-	for (i = 0; i < argc; i++) {
+	argv[0] = (*pargv)[0]; // preserve argv0
+	for (i = 1; i < argc; i++) {
 		char *arg = wchar2utf8(wargv[i]);
-		if (!arg) continue;
-
-		argv[i] = strdup(arg);
+		argv[i] = xstrdup(arg);
 	}
 	LocalFree(wargv);
+
+	*pargc = argc;
+	*pargv = argv;
 }
