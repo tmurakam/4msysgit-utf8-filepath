@@ -352,7 +352,7 @@ void convert_argv_utf8(int argc, const char **argv)
 {
 	int wargc;
 	wchar_t **wargv;
-	char **argv;
+	int i;
 
 	wargv = CommandLineToArgvW(GetCommandLineW(), &wargc);
 	if (!wargv) {
@@ -363,7 +363,7 @@ void convert_argv_utf8(int argc, const char **argv)
 		return;
 	}
 
-	for (int i = 0; i < argc; i++) {
+	for (i = 0; i < argc; i++) {
 		char *arg = wchar2utf8(wargv[i]);
 		if (!arg) continue;
 
