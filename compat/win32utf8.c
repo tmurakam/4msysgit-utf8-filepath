@@ -149,7 +149,7 @@ char *getcwd(char *pointer, int len)
 ////////////////////////////////////////////////////////////////
 // Win32 APIs
 
-WINBASEAPI BOOL WINAPI CreateProcessA(
+BOOL WINAPI CreateProcessA(
 	LPCSTR lpApplicationName,
 	LPSTR lpCommandLine,
 	LPSECURITY_ATTRIBUTES lpProcessAttributes,
@@ -229,7 +229,7 @@ WINBASEAPI BOOL WINAPI CreateProcessA(
 }
 
 
-WINBASEAPI HANDLE WINAPI CreateFileA(
+HANDLE WINAPI CreateFileA(
 	LPCSTR lpFileName,
 	DWORD dwDesiredAccess,
 	DWORD dwShareMode,
@@ -247,46 +247,32 @@ WINBASEAPI HANDLE WINAPI CreateFileA(
 			  hTemplateFile);
 }
 
-WINBASEAPI DWORD WINAPI GetFileAttributesA(LPCSTR filename)
+DWORD WINAPI GetFileAttributesA(LPCSTR filename)
 {
 	return GetFileAttributesW(utf82wchar(filename));
 }
 
-WINBASEAPI int WINAPI GetFileAttributesExA(const char *filename, GET_FILEEX_INFO_LEVELS level, void *fileinfo)
+int WINAPI GetFileAttributesExA(const char *filename, GET_FILEEX_INFO_LEVELS level, void *fileinfo)
 {
 	return GetFileAttributesExW(utf82wchar(filename), level, fileinfo);
 }
 
-WINBASEAPI BOOL WINAPI SetFileAttributesA(LPCSTR filename, DWORD attr)
+BOOL WINAPI SetFileAttributesA(LPCSTR filename, DWORD attr)
 {
 	return SetFileAttributesW(utf82wchar(filename), attr);
 }
 
-WINBASEAPI BOOL WINAPI MoveFileExA(LPCSTR oldfile, LPCSTR newfile, DWORD flags)
+BOOL WINAPI MoveFileExA(LPCSTR oldfile, LPCSTR newfile, DWORD flags)
 {
 	return MoveFileExW(utf82wchar(oldfile), utf82wchar(newfile), flags);
 }
 
-WINBASEAPI int WINAPI CreateHardLinkA(const char *filename, const char *existingFilename, SECURITY_ATTRIBUTES *securityAttributes)
+int WINAPI CreateHardLinkA(const char *filename, const char *existingFilename, SECURITY_ATTRIBUTES *securityAttributes)
 {
-	typedef BOOL (WINAPI *T)(const wchar_t*, const wchar_t*, LPSECURITY_ATTRIBUTES);
-	static T createHardLinkW = NULL;
-
-	if (!createHardLinkW) {
-		createHardLinkW = (T)GetProcAddress(
-			GetModuleHandle("kernel32.dll"), "CreateHardLinkW");
-		if (!createHardLinkW) {
-			createHardLinkW = (T)-1;
-		}
-	}
-	if (createHardLinkW == (T)-1) {
-		SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
-		return 0;
-	}
-	return createHardLinkW(utf82wchar(filename), utf82wchar(existingFilename), securityAttributes);
+	return CreateHardLinkW(utf82wchar(filename), utf82wchar(existingFilename), securityAttributes);
 }
 
-WINBASEAPI int WINAPI CreateSymbolicLinkA(const char *filename, const char *existingFilename, DWORD flags)
+int WINAPI CreateSymbolicLinkA(const char *filename, const char *existingFilename, DWORD flags)
 {
 	typedef BOOL (WINAPI *T)(const wchar_t*, const wchar_t*, DWORD);
 	static T createSymbolicLinkW = NULL;
@@ -321,7 +307,7 @@ static inline void convertFindData(WIN32_FIND_DATAW *w, WIN32_FIND_DATAA *a)
 	strcpy(a->cAlternateFileName, wchar2utf8(w->cAlternateFileName));
 }
 
-WINBASEAPI HANDLE WINAPI FindFirstFileA(LPCSTR filename, WIN32_FIND_DATAA *data)
+HANDLE WINAPI FindFirstFileA(LPCSTR filename, WIN32_FIND_DATAA *data)
 {
 	WIN32_FIND_DATAW wdata;
 
@@ -334,7 +320,7 @@ WINBASEAPI HANDLE WINAPI FindFirstFileA(LPCSTR filename, WIN32_FIND_DATAA *data)
 	return ret;
 }
 
-WINBASEAPI int WINAPI FindNextFileA(HANDLE handle, WIN32_FIND_DATAA *data)
+int WINAPI FindNextFileA(HANDLE handle, WIN32_FIND_DATAA *data)
 {
 	WIN32_FIND_DATAW wdata;
 
