@@ -1,8 +1,6 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
-#include "utf8wrapper.h"
-
 /*
  * things that are not available in header files
  */
@@ -292,7 +290,7 @@ int main(int argc, const char **argv) \
 	_setmode(_fileno(stdout), _O_BINARY); \
 	_setmode(_fileno(stderr), _O_BINARY); \
 	argv[0] = xstrdup(_pgmptr); \
-	utf8_argv(argc, argv); \
+	convert_argv_utf8(argc, argv); \
 	return mingw_main(argc, argv); \
 } \
 static int mingw_main(c,v)
@@ -330,3 +328,8 @@ struct dirent *mingw_readdir(DIR *dir);
  * Used by Pthread API implementation for Windows
  */
 extern int err_win_to_posix(DWORD winerr);
+
+/*
+ * Win32 UTF-8 API wrapper
+ */
+#include "win32utf8.h"

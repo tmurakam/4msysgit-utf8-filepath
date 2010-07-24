@@ -5,7 +5,7 @@
  */
 
 #include "../git-compat-util.h"
-#include "utf8wrapper.h"
+#include "win32utf8.h"
 
 static wchar_t *utf82wchar(const char *s)
 {
@@ -267,7 +267,7 @@ WINBASEAPI int WINAPI FindNextFileA(HANDLE handle, WIN32_FIND_DATAA *data)
 #include "../strbuf.h"
 #include "../utf8.h"
 
-void utf8_argv(int argc, const char **argv)
+void convert_argv_utf8(int argc, const char **argv)
 {
 	int i, n;
 	wchar_t buffer[PATH_MAX];

@@ -6,7 +6,7 @@
 #include "../strbuf.h"
 #include "../cache.h"
 #include "../run-command.h"
-#include "utf8wrapper.h"
+#include "win32utf8.h"
 
 unsigned int _CRT_fmode = _O_BINARY;
 static const int delay[] = { 0, 1, 10, 20, 40 };
