@@ -9,6 +9,9 @@
 #include "../strbuf.h"
 #include "../utf8.h"
 
+////////////////////////////////////////////////////////////////
+// UTF8 - wide char conversion
+
 #define	MAX_STRING	32768
 
 static wchar_t *utf82wchar(const char *s)
@@ -31,6 +34,21 @@ static wchar_t *utf82wchar(const char *s)
 	return NULL;
 }
 
+static wchar_t *utf82wchar_alloc(const char *s)
+{
+	int n;
+	wchar_t *buf;
+
+	if (!s) return NULL;
+	
+	n = MultiByteToWideChar(CP_UTF8, 0, s, -1, NULL, 0);
+	if (n == 0) return NULL;
+
+	buf = xmalloc(n * sizeof(wchar_t));
+	MultiByteToWideChar(CP_UTF8, 0, s, -1, buf, n);
+	return buf;
+}
+
 static char *wchar2utf8(const wchar_t *s)
 {
 	static char buffer[6][MAX_STRING];
@@ -49,6 +67,21 @@ static char *wchar2utf8(const wchar_t *s)
 		return buffer[counter];
 	}
 	return NULL;
+}
+
+static char *wchar2utf8_alloc(const wchar_t *s)
+{
+	int n;
+	char *buf;
+
+	if (!s) return NULL;
+
+	n = WideCharToMultiByte(CP_UTF8, 0, s, -1, NULL, 0, NULL, NULL);
+	if (n == 0) return NULL;
+
+	buf = xmalloc(n);
+	WideCharToMultiByte(CP_UTF8, 0, s, -1, buf, n, NULL, NULL);
+	return buf;
 }
 
 ////////////////////////////////////////////////////////////////
@@ -154,12 +187,6 @@ int utf8_fputs(const char *s, FILE *fp)
 	char st_buf[1024*4], *buf = st_buf;
 	int ret;
 
-#if 0
-	if (!isatty(fileno(fp))) {
-		return fputs(s, fp);
-	}
-#endif
-
 	n = MultiByteToWideChar(CP_UTF8, 0, s, -1, NULL, 0);
 	if (n == 0) return -1;
 
@@ -177,7 +204,7 @@ int utf8_fputs(const char *s, FILE *fp)
 		free(wbuf);
 		free(buf);
 	}
-	
+
 	return ret;
 }
 
@@ -199,11 +226,10 @@ BOOL WINAPI CreateProcessA(
 	STARTUPINFOW si;
 	STARTUPINFOA *sa = lpStartupInfo;
 	BOOL ret;
-	wchar_t *wenv = NULL;
 
-	//fprintf(stderr, "CreateProcessA: '%s' '%s'\n", lpApplicationName, lpCommandLine); // ###
-
+#if 0
 	// convert environemnt variables
+	wchar_t *wenv = NULL;
 	if (lpEnvironment) {
 		int len;
 		char *p;
@@ -230,6 +256,7 @@ BOOL WINAPI CreateProcessA(
 		}
 		*wp = 0;
 	}
+#endif
 
 	// Convert startupinfo
 	memset(&si, 0, sizeof(si));
@@ -255,13 +282,12 @@ BOOL WINAPI CreateProcessA(
 		lpProcessAttributes,
 		lpThreadAttributes,
 		bInheritHandles,
-		dwCreationFlags | CREATE_UNICODE_ENVIRONMENT,
-		wenv,
+		dwCreationFlags, // | CREATE_UNICODE_ENVIRONMENT,
+		lpEnvironment, // wenv
 		utf82wchar(lpCurrentDirectory),
 		&si,
 		lpProcessInformation);
 
-	free(wenv);
 	return ret;
 }
 
@@ -374,8 +400,7 @@ void convert_argv_utf8(int *pargc, char ***pargv)
 
 	argv[0] = (*pargv)[0]; // preserve argv0
 	for (i = 1; i < argc; i++) {
-		char *arg = wchar2utf8(wargv[i]);
-		argv[i] = xstrdup(arg);
+		argv[i] = wchar2utf8_alloc(wargv[i]);
 	}
 	LocalFree(wargv);
 
