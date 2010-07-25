@@ -34,6 +34,7 @@ static wchar_t *utf82wchar(const char *s)
 	return NULL;
 }
 
+#if 0 // not used
 static wchar_t *utf82wchar_alloc(const char *s)
 {
 	int n;
@@ -48,6 +49,7 @@ static wchar_t *utf82wchar_alloc(const char *s)
 	MultiByteToWideChar(CP_UTF8, 0, s, -1, buf, n);
 	return buf;
 }
+#endif
 
 static char *wchar2utf8(const wchar_t *s)
 {
@@ -179,6 +181,9 @@ char *getcwd(char *pointer, int len)
 	return pointer;
 }
 
+/**
+   Output ANSI string converted from UTF-8
+*/
 #undef fputs
 int utf8_fputs(const char *s, FILE *fp)
 {
