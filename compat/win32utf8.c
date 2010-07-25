@@ -275,23 +275,8 @@ int WINAPI CreateHardLinkA(const char *filename, const char *existingFilename, S
 
 int WINAPI CreateSymbolicLinkA(const char *filename, const char *existingFilename, DWORD flags)
 {
-	typedef BOOL (WINAPI *T)(const wchar_t*, const wchar_t*, DWORD);
-	static T createSymbolicLinkW = NULL;
-
-	if (!createSymbolicLinkW) {
-#if 0  // does not support symbolic link!
-		createSymbolicLinkW = (T)GetProcAddress(
-			GetModuleHandle("kernel32.dll"), "CreateSymbolicLinkW");
-#endif
-		if (!createSymbolicLinkW) {
-			createSymbolicLinkW = (T)-1;
-		}
-	}
-	if (createSymbolicLinkW == (T)-1) {
-		SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
-		return 0;
-	}
-	return createSymbolicLinkW(utf82wchar(filename), utf82wchar(existingFilename), flags);
+	SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
+	return 0;
 }
 
 static inline void convertFindData(WIN32_FIND_DATAW *w, WIN32_FIND_DATAA *a)
