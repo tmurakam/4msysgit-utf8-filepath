@@ -146,6 +146,41 @@ char *getcwd(char *pointer, int len)
 	return pointer;
 }
 
+#undef fputs
+#if 0
+int utf8_fputs(const char *s, FILE *fp)
+{
+	int n;
+	wchar_t st_wbuf[1024], *wbuf = st_wbuf;
+	char st_buf[1024*4], *buf = st_buf;
+	int ret;
+
+	if (!isatty(fileno(fp))) {
+		return fputs(s, fp);
+	}
+
+	n = MultiByteToWideChar(CP_UTF8, 0, s, -1, NULL, 0);
+	if (n == 0) return -1;
+
+	if (n > 1024) {
+		wbuf = xmalloc(n * sizeof(wchar_t));
+		buf = xmalloc(n * 4);
+	}
+
+	MultiByteToWideChar(CP_UTF8, 0, s, -1, wbuf, n);
+	WideCharToMultiByte(CP_ACP, 0, wbuf, -1, buf, n * 4, NULL, NULL);
+
+	ret = fputs(buf, fp);
+
+	if (wbuf != st_wbuf) {
+		free(wbuf);
+		free(buf);
+	}
+	
+	return ret;
+}
+#endif
+
 ////////////////////////////////////////////////////////////////
 // Win32 APIs
 
