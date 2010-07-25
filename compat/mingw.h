@@ -289,8 +289,8 @@ int main(int argc, char **argv) \
 	_setmode(_fileno(stdin), _O_BINARY); \
 	_setmode(_fileno(stdout), _O_BINARY); \
 	_setmode(_fileno(stderr), _O_BINARY); \
-	argv[0] = xstrdup(_pgmptr);           \
-	convert_argv_utf8(&argc, &argv);	\
+	argv[0] = xstrdup(_pgmptr); \
+	convert_argv_utf8(&argc, &argv); \
 	return mingw_main(argc, argv); \
 } \
 static int mingw_main(c,v)
