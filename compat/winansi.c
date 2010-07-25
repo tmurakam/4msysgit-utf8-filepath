@@ -12,7 +12,7 @@
 #undef fputs
 /* TODO: write */
 
-//#define fputs utf8_fputs
+#define fputs utf8_fputs
 
 /*
  ANSI codes used by git: m, K

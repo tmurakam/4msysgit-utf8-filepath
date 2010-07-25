@@ -147,7 +147,6 @@ char *getcwd(char *pointer, int len)
 }
 
 #undef fputs
-#if 0
 int utf8_fputs(const char *s, FILE *fp)
 {
 	int n;
@@ -155,9 +154,11 @@ int utf8_fputs(const char *s, FILE *fp)
 	char st_buf[1024*4], *buf = st_buf;
 	int ret;
 
+#if 0
 	if (!isatty(fileno(fp))) {
 		return fputs(s, fp);
 	}
+#endif
 
 	n = MultiByteToWideChar(CP_UTF8, 0, s, -1, NULL, 0);
 	if (n == 0) return -1;
@@ -179,7 +180,6 @@ int utf8_fputs(const char *s, FILE *fp)
 	
 	return ret;
 }
-#endif
 
 ////////////////////////////////////////////////////////////////
 // Win32 APIs
