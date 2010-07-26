@@ -5,6 +5,7 @@
  */
 
 #include "../git-compat-util.h"
+#include "wchar.h"
 #include "win32utf8.h"
 #include "../strbuf.h"
 #include "../utf8.h"
@@ -88,11 +89,6 @@ static char *wchar2utf8_alloc(const wchar_t *s)
 
 ////////////////////////////////////////////////////////////////
 // replacement of libc APIs
-
-int _wchdir(const wchar_t *);
-int _wmkdir(const wchar_t *);
-int _wrmdir(const wchar_t *);
-wchar_t *_wgetcwd(wchar_t *, int);
 
 #undef open
 int open(const char *filename, int flags, ...)
