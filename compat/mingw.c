@@ -4,6 +4,7 @@
 #include "../strbuf.h"
 #include "../cache.h"
 #include "../run-command.h"
+#include "win32utf8.h"
 
 unsigned int _CRT_fmode = _O_BINARY;
 static const int delay[] = { 0, 1, 10, 20, 40 };
@@ -1588,19 +1589,7 @@ void mingw_open_html(const char *unixpath)
 
 int link(const char *oldpath, const char *newpath)
 {
-	typedef BOOL (WINAPI *T)(const char*, const char*, LPSECURITY_ATTRIBUTES);
-	static T create_hard_link = NULL;
-	if (!create_hard_link) {
-		create_hard_link = (T) GetProcAddress(
-			GetModuleHandle("kernel32.dll"), "CreateHardLinkA");
-		if (!create_hard_link)
-			create_hard_link = (T)-1;
-	}
-	if (create_hard_link == (T)-1) {
-		errno = ENOSYS;
-		return -1;
-	}
-	if (!create_hard_link(newpath, oldpath, NULL)) {
+	if (!CreateHardLinkA(newpath, oldpath, NULL)) {
 		errno = err_win_to_posix(GetLastError());
 		return -1;
 	}
