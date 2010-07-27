@@ -209,6 +209,34 @@ int utf8_fputs(const char *s, FILE *fp)
 	return ret;
 }
 
+#undef vfprintf // called from winansi.c
+int utf8_vfprintf(FILE *fp, const char *format, va_list list)
+{
+	int len, ret;
+	char small_buf[256], *buf = small_buf;
+	va_list cp;
+
+	va_copy(cp, list);
+	len = vsnprintf(small_buf, sizeof(small_buf), format, cp);
+	va_end(cp);
+
+	if (len > sizeof(small_buf) - 1) {
+		buf = malloc(len + 1);
+		if (!buf) {
+			goto abort;
+		}
+		len = vsnprintf(buf, len + 1, format, list);
+	}
+
+	ret = utf8_fputs(buf, fp);
+	if (buf != small_buf) free(buf);
+	return ret;
+
+abort:
+	return vfprintf(fp, format, list);
+}
+
+
 #undef fwrite
 int utf8_fwrite(const void *ptr, size_t size, size_t nitems, FILE *fp)
 {

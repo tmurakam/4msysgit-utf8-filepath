@@ -13,6 +13,7 @@
 /* TODO: write */
 
 #define fputs utf8_fputs
+#define	vfprintf utf8_vfprintf
 
 /*
  ANSI codes used by git: m, K
