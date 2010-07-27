@@ -209,6 +209,7 @@ int utf8_fputs(const char *s, FILE *fp)
 	return ret;
 }
 
+#undef vsnprintf
 #undef vfprintf // called from winansi.c
 int utf8_vfprintf(FILE *fp, const char *format, va_list list)
 {
@@ -228,7 +229,7 @@ int utf8_vfprintf(FILE *fp, const char *format, va_list list)
 		len = vsnprintf(buf, len + 1, format, list);
 	}
 
-	ret = utf8_fputs(buf, fp);
+	ret = utf8_fwrite(buf, 1, len, fp);
 	if (buf != small_buf) free(buf);
 	return ret;
 
