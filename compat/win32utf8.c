@@ -209,6 +209,72 @@ int utf8_fputs(const char *s, FILE *fp)
 	return ret;
 }
 
+#undef fwrite
+int utf8_fwrite(const void *ptr, size_t size, size_t nitems, FILE *fp)
+{
+	char *p, *endp, *p2;
+	int ret;
+	int len;
+	wchar_t *wide;
+	char *ansi;
+	int wide_len;
+	int ansi_len;
+
+	if (fp != stdout) {
+		return fwrite(ptr, size, nitems, fp);
+	}
+
+	p = (char *)ptr;
+	endp = p + size * nitems;
+	while (p < endp) {
+		if ((*p & 0x80) == 0) {
+			// ASCII, including '\0'
+			p2 = p + 1;
+			while (p2 < endp && (*p2 & 0x80) == 0) {
+				p2++;
+			}
+			ret = fwrite(p, 1, p2 - p, fp);
+			if (ret < 0) return ret;
+			p = p2;
+			continue;
+		}
+
+		// non ASCII (UTF8 multibyte)
+		p2 = p + 1;
+		while (p2 < endp && (*p2 & 0x80) != 0) {
+			p2++;
+		}
+		len = p2 - p;
+
+		// convert to ANSI
+		wide = NULL;
+		ansi = NULL;
+		ansi_len = -1;
+
+		wide_len = MultiByteToWideChar(CP_UTF8, 0, p, len, NULL, 0);
+		if (wide_len > 0) {
+			wide = xmalloc(sizeof(wchar_t) * wide_len);
+			MultiByteToWideChar(CP_UTF8, 0, p, len, wide, wide_len);
+
+			ansi_len = WideCharToMultiByte(CP_ACP, 0, wide, wide_len, NULL, 0, NULL, NULL);
+		}
+		if (wide_len <= 0 || ansi_len <= 0) {
+			// Oops! can't convert. Write through...
+			ret = fwrite(p, 1, len, fp);
+		} else {
+			ansi = xmalloc(ansi_len);
+			WideCharToMultiByte(CP_ACP, 0, wide, wide_len, ansi, ansi_len, NULL, NULL);
+			ret = fwrite(ansi, 1, ansi_len, fp);
+		}
+		free(wide);
+		free(ansi);
+		if (ret < 0) return ret;
+
+		p = p2;
+	}
+	return nitems;
+}
+
 ////////////////////////////////////////////////////////////////
 // Win32 APIs
 
