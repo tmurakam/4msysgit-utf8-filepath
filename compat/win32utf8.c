@@ -217,11 +217,15 @@ int utf8_vfprintf(FILE *fp, const char *format, va_list list)
 	char small_buf[256], *buf = small_buf;
 	va_list cp;
 
+	if (fp != stdout) {
+		return vfprintf(fp, format, list);
+	}
+
 	va_copy(cp, list);
 	len = vsnprintf(small_buf, sizeof(small_buf), format, cp);
 	va_end(cp);
 
-	if (len > sizeof(small_buf) - 1) {
+	if (len + 1 > sizeof(small_buf)) {
 		buf = malloc(len + 1);
 		if (!buf) {
 			goto abort;
