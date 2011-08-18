@@ -337,7 +337,7 @@ int main(int argc, char **argv) \
 { \
 	mingw_startup(); \
 	convert_argv_utf8(&argc, &argv); \
-	return mingw_main(__argc, __argv); \
+	return mingw_main(argc/*__argc*/,argv/* __argv*/);	\
 } \
 static int mingw_main(c,v)
 
