@@ -1861,7 +1861,4 @@ void mingw_startup()
 	_setmode(_fileno(stdin), _O_BINARY);
 	_setmode(_fileno(stdout), _O_BINARY);
 	_setmode(_fileno(stderr), _O_BINARY);
-
-	/* convert argument strings to UTF-8 */
-	convert_argv_utf8(&argc, &argv);
 }
