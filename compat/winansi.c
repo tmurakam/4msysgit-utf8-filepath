@@ -3,6 +3,9 @@
  */
 
 #include "../git-compat-util.h"
+#include <malloc.h>
+#include <wingdi.h>
+#include <winreg.h>
 
 /*
  Functions to be wrapped:
@@ -10,6 +13,7 @@
 #undef printf
 #undef fprintf
 #undef fputs
+#undef vfprintf
 /* TODO: write */
 
 #define fputs utf8_fputs
@@ -25,29 +29,107 @@ static HANDLE console;
 static WORD plain_attr;
 static WORD attr;
 static int negative;
+static FILE *last_stream = NULL;
+static int non_ascii_used = 0;
 
-static void init(void)
+typedef struct _CONSOLE_FONT_INFOEX {
+	ULONG cbSize;
+	DWORD nFont;
+	COORD dwFontSize;
+	UINT FontFamily;
+	UINT FontWeight;
+	WCHAR FaceName[LF_FACESIZE];
+} CONSOLE_FONT_INFOEX, *PCONSOLE_FONT_INFOEX;
+
+typedef BOOL (WINAPI *PGETCURRENTCONSOLEFONTEX)(HANDLE, BOOL,
+		PCONSOLE_FONT_INFOEX);
+
+static void warn_if_raster_font(void)
 {
-	CONSOLE_SCREEN_BUFFER_INFO sbi;
+	DWORD fontFamily = 0;
+	PGETCURRENTCONSOLEFONTEX pGetCurrentConsoleFontEx;
 
-	static int initialized = 0;
-	if (initialized)
+	/* don't bother if output was ascii only */
+	if (!non_ascii_used)
 		return;
 
-	console = GetStdHandle(STD_OUTPUT_HANDLE);
-	if (console == INVALID_HANDLE_VALUE)
-		console = NULL;
+	/* GetCurrentConsoleFontEx is available since Vista */
+	pGetCurrentConsoleFontEx = GetProcAddress(GetModuleHandle("kernel32.dll"),
+			"GetCurrentConsoleFontEx");
+	if (pGetCurrentConsoleFontEx) {
+		CONSOLE_FONT_INFOEX cfi;
+		cfi.cbSize = sizeof(cfi);
+		if (pGetCurrentConsoleFontEx(console, 0, &cfi))
+			fontFamily = cfi.FontFamily;
+	} else {
+		/* pre-Vista: check default console font in registry */
+		HKEY hkey;
+		if (ERROR_SUCCESS == RegOpenKeyExA(HKEY_CURRENT_USER, "Console", 0,
+				KEY_READ, &hkey)) {
+			DWORD size = sizeof(fontFamily);
+			RegQueryValueExA(hkey, "FontFamily", NULL, NULL,
+					(LPVOID) &fontFamily, &size);
+			RegCloseKey(hkey);
+		}
+	}
 
-	if (!console)
-		return;
-
-	GetConsoleScreenBufferInfo(console, &sbi);
-	attr = plain_attr = sbi.wAttributes;
-	negative = 0;
-
-	initialized = 1;
+	if (!(fontFamily & TMPF_TRUETYPE))
+		warning("Your console font probably doesn\'t support "
+			"Unicode. If you experience strange characters in the output, "
+			"consider switching to a TrueType font such as Lucida Console!");
 }
 
+static int is_console(FILE *stream)
+{
+	CONSOLE_SCREEN_BUFFER_INFO sbi;
+	HANDLE hcon;
+
+	static int initialized = 0;
+
+	/* use cached value if stream hasn't changed */
+	if (stream == last_stream)
+		return console != NULL;
+
+	last_stream = stream;
+	console = NULL;
+
+	/* get OS handle of the stream */
+	hcon = (HANDLE) _get_osfhandle(_fileno(stream));
+	if (hcon == INVALID_HANDLE_VALUE)
+		return 0;
+
+	/* check if its a handle to a console output screen buffer */
+	if (!GetConsoleScreenBufferInfo(hcon, &sbi))
+		return 0;
+
+	if (!initialized) {
+		attr = plain_attr = sbi.wAttributes;
+		negative = 0;
+		initialized = 1;
+		/* check console font on exit */
+		atexit(warn_if_raster_font);
+	}
+
+	console = hcon;
+	return 1;
+}
+
+static int write_console(const char *str, size_t len)
+{
+	/* convert utf-8 to utf-16, write directly to console */
+	int wlen = MultiByteToWideChar(CP_UTF8, 0, str, len, NULL, 0);
+	wchar_t *wbuf = (wchar_t *) alloca(wlen * sizeof(wchar_t));
+	MultiByteToWideChar(CP_UTF8, 0, str, len, wbuf, wlen);
+
+	WriteConsoleW(console, wbuf, wlen, NULL, NULL);
+
+	/* remember if non-ascii characters are printed */
+	if (wlen != len)
+		non_ascii_used = 1;
+
+	/* return original (utf-8 encoded) length */
+	return len;
+}
 
 #define FOREGROUND_ALL (FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE)
 #define BACKGROUND_ALL (BACKGROUND_RED | BACKGROUND_GREEN | BACKGROUND_BLUE)
@@ -247,13 +329,15 @@ static int ansi_emulate(const char *str, FILE *stream)
 	int rv = 0;
 	const char *pos = str;
 
+	fflush(stream);
+
 	while (*pos) {
 		pos = strstr(str, "\033[");
 		if (pos) {
 			size_t len = pos - str;
 
 			if (len) {
-				size_t out_len = fwrite(str, 1, len, stream);
+				size_t out_len = write_console(str, len);
 				rv += out_len;
 				if (out_len < len)
 					return rv;
@@ -262,14 +346,12 @@ static int ansi_emulate(const char *str, FILE *stream)
 			str = pos + 2;
 			rv += 2;
 
-			fflush(stream);
-
 			pos = set_attr(str);
 			rv += pos - str;
 			str = pos;
 		} else {
-			rv += strlen(str);
-			fputs(str, stream);
+			size_t len = strlen(str);
+			rv += write_console(str, len);
 			return rv;
 		}
 	}
@@ -280,12 +362,7 @@ int winansi_fputs(const char *str, FILE *stream)
 {
 	int rv;
 
-	if (!isatty(fileno(stream)))
-		return fputs(str, stream);
-
-	init();
-
-	if (!console)
+	if (!is_console(stream))
 		return fputs(str, stream);
 
 	rv = ansi_emulate(str, stream);
@@ -296,19 +373,14 @@ int winansi_fputs(const char *str, FILE *stream)
 		return EOF;
 }
 
-static int winansi_vfprintf(FILE *stream, const char *format, va_list list)
+int winansi_vfprintf(FILE *stream, const char *format, va_list list)
 {
 	int len, rv;
 	char small_buf[256];
 	char *buf = small_buf;
 	va_list cp;
 
-	if (!isatty(fileno(stream)))
-		goto abort;
-
-	init();
-
-	if (!console)
+	if (!is_console(stream))
 		goto abort;
 
 	va_copy(cp, list);

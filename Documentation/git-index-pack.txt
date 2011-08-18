@@ -59,10 +59,10 @@ OPTIONS
 	the newly constructed pack and index before refs can be
 	updated to use objects contained in the pack.
 
---keep='why'::
+--keep=<msg>::
 	Like --keep create a .keep file before moving the index into
 	its final destination, but rather than creating an empty file
-	place 'why' followed by an LF into the .keep file.  The 'why'
+	place '<msg>' followed by an LF into the .keep file.  The '<msg>'
 	message can later be searched for within all .keep files to
 	locate any which have outlived their usefulness.
 
@@ -84,15 +84,6 @@ also used then this is prefixed by either "pack\t", or "keep\t" if a
 new .keep file was successfully created. This is useful to remove a
 .keep file used as a lock to prevent the race with 'git repack'
 mentioned above.
-
-
-Author
-------
-Written by Sergey Vlasov <vsu@altlinux.ru>
-
-Documentation
--------------
-Documentation by Sergey Vlasov
 
 GIT
 ---

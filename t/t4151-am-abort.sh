@@ -45,9 +45,10 @@ do
 
 	test_expect_success "am$with3 --skip continue after failed am$with3" '
 		test_must_fail git am$with3 --skip >output &&
-		test "$(grep "^Applying" output)" = "Applying: 6" &&
-		test_cmp file-2-expect file-2 &&
-		test ! -f .git/rr-cache/MERGE_RR
+		test_i18ngrep "^Applying" output >output.applying &&
+		test_i18ngrep "^Applying: 6$" output.applying &&
+		test_i18ncmp file-2-expect file-2 &&
+		test ! -f .git/MERGE_RR
 	'
 
 	test_expect_success "am --abort goes back after failed am$with3" '
@@ -57,9 +58,18 @@ do
 		test_cmp expect actual &&
 		test_cmp file-2-expect file-2 &&
 		git diff-index --exit-code --cached HEAD &&
-		test ! -f .git/rr-cache/MERGE_RR
+		test ! -f .git/MERGE_RR
 	'
 
 done
+
+test_expect_success 'am --abort will keep the local commits intact' '
+	test_must_fail git am 0004-*.patch &&
+	test_commit unrelated &&
+	git rev-parse HEAD >expect &&
+	git am --abort &&
+	git rev-parse HEAD >actual &&
+	test_cmp expect actual
+'
 
 test_done

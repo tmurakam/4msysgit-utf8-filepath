@@ -80,7 +80,12 @@ struct transport {
 	int (*disconnect)(struct transport *connection);
 	char *pack_lockfile;
 	signed verbose : 3;
-	/* Force progress even if stderr is not a tty */
+	/**
+	 * Transports should not set this directly, and should use this
+	 * value without having to check isatty(2), -q/--quiet
+	 * (transport->verbose < 0), etc. - checking has already been done
+	 * in transport_set_verbosity().
+	 **/
 	unsigned progress : 1;
 	/*
 	 * If transport is at least potentially smart, this points to
@@ -94,10 +99,10 @@ struct transport {
 #define TRANSPORT_PUSH_FORCE 2
 #define TRANSPORT_PUSH_DRY_RUN 4
 #define TRANSPORT_PUSH_MIRROR 8
-#define TRANSPORT_PUSH_VERBOSE 16
-#define TRANSPORT_PUSH_PORCELAIN 32
-#define TRANSPORT_PUSH_QUIET 64
-#define TRANSPORT_PUSH_SET_UPSTREAM 128
+#define TRANSPORT_PUSH_PORCELAIN 16
+#define TRANSPORT_PUSH_SET_UPSTREAM 32
+
+#define TRANSPORT_SUMMARY_WIDTH (2 * DEFAULT_ABBREV + 3)
 
 /* Returns a transport suitable for the url */
 struct transport *transport_get(struct remote *, const char *);
@@ -128,6 +133,8 @@ struct transport *transport_get(struct remote *, const char *);
  **/
 int transport_set_option(struct transport *transport, const char *name,
 			 const char *value);
+void transport_set_verbosity(struct transport *transport, int verbosity,
+	int force_progress);
 
 int transport_push(struct transport *connection,
 		   int refspec_nr, const char **refspec, int flags,
@@ -147,5 +154,19 @@ int transport_connect(struct transport *transport, const char *name,
 
 /* Transport methods defined outside transport.c */
 int transport_helper_init(struct transport *transport, const char *name);
+int bidirectional_transfer_loop(int input, int output);
+
+/* common methods used by transport.c and builtin-send-pack.c */
+void transport_verify_remote_names(int nr_heads, const char **heads);
+
+void transport_update_tracking_ref(struct remote *remote, struct ref *ref, int verbose);
+
+int transport_refs_pushed(struct ref *ref);
+
+void transport_print_push_status(const char *dest, struct ref *refs,
+		  int verbose, int porcelain, int *nonfastforward);
+
+typedef void alternate_ref_fn(const struct ref *, void *);
+extern void for_each_alternate_ref(alternate_ref_fn, void *);
 
 #endif

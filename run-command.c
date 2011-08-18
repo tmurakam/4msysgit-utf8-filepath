@@ -67,7 +67,12 @@ static int child_notifier = -1;
 
 static void notify_parent(void)
 {
-	write(child_notifier, "", 1);
+	/*
+	 * execvp failed.  If possible, we'd like to let start_command
+	 * know, so failures like ENOENT can be handled right away; but
+	 * otherwise, finish_command will still report the error.
+	 */
+	xwrite(child_notifier, "", 1);
 }
 
 static NORETURN void die_child(const char *err, va_list params)
@@ -77,11 +82,12 @@ static NORETURN void die_child(const char *err, va_list params)
 	if (len > sizeof(msg))
 		len = sizeof(msg);
 
-	write(child_err, "fatal: ", 7);
-	write(child_err, msg, len);
-	write(child_err, "\n", 1);
+	write_in_full(child_err, "fatal: ", 7);
+	write_in_full(child_err, msg, len);
+	write_in_full(child_err, "\n", 1);
 	exit(128);
 }
+#endif
 
 static inline void set_cloexec(int fd)
 {
@@ -89,7 +95,6 @@ static inline void set_cloexec(int fd)
 	if (flags >= 0)
 		fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
 }
-#endif
 
 static int wait_or_whine(pid_t pid, const char *argv0, int silent_exec_failure)
 {
@@ -192,6 +197,7 @@ fail_pipe:
 	}
 
 	trace_argv_printf(cmd->argv, "trace: run_command:");
+	fflush(NULL);
 
 #ifndef WIN32
 {
@@ -199,7 +205,6 @@ fail_pipe:
 	if (pipe(notify_pipe))
 		notify_pipe[0] = notify_pipe[1] = -1;
 
-	fflush(NULL);
 	cmd->pid = fork();
 	if (!cmd->pid) {
 		/*
@@ -340,8 +345,6 @@ fail_pipe:
 	else if (cmd->out > 1)
 		fhout = dup(cmd->out);
 
-	if (cmd->dir)
-		die("chdir in start_command() not implemented");
 	if (cmd->env)
 		env = make_augmented_environ(cmd->env);
 
@@ -351,7 +354,7 @@ fail_pipe:
 		cmd->argv = prepare_shell_cmd(cmd->argv);
 	}
 
-	cmd->pid = mingw_spawnvpe(cmd->argv[0], cmd->argv, env,
+	cmd->pid = mingw_spawnvpe(cmd->argv[0], cmd->argv, env, cmd->dir,
 				  fhin, fhout, fherr);
 	failed_errno = errno;
 	if (cmd->pid < 0 && (!cmd->silent_exec_failure || errno != ENOENT))
@@ -383,6 +386,8 @@ fail_pipe:
 			close(cmd->out);
 		if (need_err)
 			close_pair(fderr);
+		else if (cmd->err)
+			close(cmd->err);
 		errno = failed_errno;
 		return -1;
 	}
@@ -447,11 +452,35 @@ int run_command_v_opt_cd_env(const char **argv, int opt, const char *dir, const 
 	return run_command(&cmd);
 }
 
-#ifdef WIN32
-static unsigned __stdcall run_thread(void *data)
+#ifndef NO_PTHREADS
+static pthread_t main_thread;
+static int main_thread_set;
+static pthread_key_t async_key;
+
+static void *run_thread(void *data)
 {
 	struct async *async = data;
-	return async->proc(async->proc_in, async->proc_out, async->data);
+	intptr_t ret;
+
+	pthread_setspecific(async_key, async);
+	ret = async->proc(async->proc_in, async->proc_out, async->data);
+	return (void *)ret;
+}
+
+static NORETURN void die_async(const char *err, va_list params)
+{
+	vreportf("fatal: ", err, params);
+
+	if (!pthread_equal(main_thread, pthread_self())) {
+		struct async *async = pthread_getspecific(async_key);
+		if (async->proc_in >= 0)
+			close(async->proc_in);
+		if (async->proc_out >= 0)
+			close(async->proc_out);
+		pthread_exit((void *)128);
+	}
+
+	exit(128);
 }
 #endif
 
@@ -497,7 +526,7 @@ int start_async(struct async *async)
 	else
 		proc_out = -1;
 
-#ifndef WIN32
+#ifdef NO_PTHREADS
 	/* Flush stdio before fork() to avoid cloning buffers */
 	fflush(NULL);
 
@@ -524,12 +553,29 @@ int start_async(struct async *async)
 	else if (async->out)
 		close(async->out);
 #else
+	if (!main_thread_set) {
+		/*
+		 * We assume that the first time that start_async is called
+		 * it is from the main thread.
+		 */
+		main_thread_set = 1;
+		main_thread = pthread_self();
+		pthread_key_create(&async_key, NULL);
+		set_die_routine(die_async);
+	}
+
+	if (proc_in >= 0)
+		set_cloexec(proc_in);
+	if (proc_out >= 0)
+		set_cloexec(proc_out);
 	async->proc_in = proc_in;
 	async->proc_out = proc_out;
-	async->tid = (HANDLE) _beginthreadex(NULL, 0, run_thread, async, 0, NULL);
-	if (!async->tid) {
-		error("cannot create thread: %s", strerror(errno));
-		goto error;
+	{
+		int err = pthread_create(&async->tid, NULL, run_thread, async);
+		if (err) {
+			error("cannot create thread: %s", strerror(err));
+			goto error;
+		}
 	}
 #endif
 	return 0;
@@ -549,17 +595,15 @@ error:
 
 int finish_async(struct async *async)
 {
-#ifndef WIN32
-	int ret = wait_or_whine(async->pid, "child process", 0);
+#ifdef NO_PTHREADS
+	return wait_or_whine(async->pid, "child process", 0);
 #else
-	DWORD ret = 0;
-	if (WaitForSingleObject(async->tid, INFINITE) != WAIT_OBJECT_0)
-		ret = error("waiting for thread failed: %lu", GetLastError());
-	else if (!GetExitCodeThread(async->tid, &ret))
-		ret = error("cannot get thread exit code: %lu", GetLastError());
-	CloseHandle(async->tid);
+	void *ret = (void *)(intptr_t)(-1);
+
+	if (pthread_join(async->tid, &ret))
+		error("pthread_join failed");
+	return (int)(intptr_t)ret;
 #endif
-	return ret;
 }
 
 int run_hook(const char *index_file, const char *name, ...)

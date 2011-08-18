@@ -9,6 +9,7 @@ LONG_USAGE='Fetch one or more remote refs and merge it/them into the current HEA
 SUBDIRECTORY_OK=Yes
 OPTIONS_SPEC=
 . git-sh-setup
+. git-sh-i18n
 set_reflog_action "pull $*"
 require_work_tree
 cd_to_toplevel
@@ -17,20 +18,20 @@ cd_to_toplevel
 die_conflict () {
     git diff-index --cached --name-status -r --ignore-submodules HEAD --
     if [ $(git config --bool --get advice.resolveConflict || echo true) = "true" ]; then
-	die "Pull is not possible because you have unmerged files.
+	die "$(gettext "Pull is not possible because you have unmerged files.
 Please, fix them up in the work tree, and then use 'git add/rm <file>'
-as appropriate to mark resolution, or use 'git commit -a'."
+as appropriate to mark resolution, or use 'git commit -a'.")"
     else
-	die "Pull is not possible because you have unmerged files."
+	die "$(gettext "Pull is not possible because you have unmerged files.")"
     fi
 }
 
 die_merge () {
     if [ $(git config --bool --get advice.resolveConflict || echo true) = "true" ]; then
-	die "You have not concluded your merge (MERGE_HEAD exists).
-Please, commit your changes before you can merge."
+	die "$(gettext "You have not concluded your merge (MERGE_HEAD exists).
+Please, commit your changes before you can merge.")"
     else
-	die "You have not concluded your merge (MERGE_HEAD exists)."
+	die "$(gettext "You have not concluded your merge (MERGE_HEAD exists).")"
     fi
 }
 
@@ -38,11 +39,12 @@ test -z "$(git ls-files -u)" || die_conflict
 test -f "$GIT_DIR/MERGE_HEAD" && die_merge
 
 strategy_args= diffstat= no_commit= squash= no_ff= ff_only=
-log_arg= verbosity=
+log_arg= verbosity= progress= recurse_submodules=
 merge_args=
 curr_branch=$(git symbolic-ref -q HEAD)
-curr_branch_short=$(echo "$curr_branch" | sed "s|refs/heads/||")
+curr_branch_short="${curr_branch#refs/heads/}"
 rebase=$(git config --bool branch.$curr_branch_short.rebase)
+dry_run=
 while :
 do
 	case "$1" in
@@ -50,6 +52,10 @@ do
 		verbosity="$verbosity -q" ;;
 	-v|--verbose)
 		verbosity="$verbosity -v" ;;
+	--progress)
+		progress=--progress ;;
+	--no-progress)
+		progress=--no-progress ;;
 	-n|--no-stat|--no-summary)
 		diffstat=--no-stat ;;
 	--stat|--summary)
@@ -102,7 +108,19 @@ do
 	--no-r|--no-re|--no-reb|--no-reba|--no-rebas|--no-rebase)
 		rebase=false
 		;;
-	-h|--h|--he|--hel|--help)
+	--recurse-submodules)
+		recurse_submodules=--recurse-submodules
+		;;
+	--recurse-submodules=*)
+		recurse_submodules="$1"
+		;;
+	--no-recurse-submodules)
+		recurse_submodules=--no-recurse-submodules
+		;;
+	--d|--dr|--dry|--dry-|--dry-r|--dry-ru|--dry-run)
+		dry_run=--dry-run
+		;;
+	-h|--h|--he|--hel|--help|--help-|--help-a|--help-al|--help-all)
 		usage
 		;;
 	*)
@@ -151,34 +169,10 @@ error_on_no_merge_candidates () {
 		echo "You asked to pull from the remote '$1', but did not specify"
 		echo "a branch. Because this is not the default configured remote"
 		echo "for your current branch, you must specify a branch on the command line."
-	elif [ -z "$curr_branch" ]; then
-		echo "You are not currently on a branch, so I cannot use any"
-		echo "'branch.<branchname>.merge' in your configuration file."
-		echo "Please specify which remote branch you want to use on the command"
-		echo "line and try again (e.g. 'git pull <repository> <refspec>')."
-		echo "See git-pull(1) for details."
-	elif [ -z "$upstream" ]; then
-		echo "You asked me to pull without telling me which branch you"
-		echo "want to $op_type $op_prep, and 'branch.${curr_branch}.merge' in"
-		echo "your configuration file does not tell me, either. Please"
-		echo "specify which branch you want to use on the command line and"
-		echo "try again (e.g. 'git pull <repository> <refspec>')."
-		echo "See git-pull(1) for details."
-		echo
-		echo "If you often $op_type $op_prep the same branch, you may want to"
-		echo "use something like the following in your configuration file:"
-		echo
-		echo "    [branch \"${curr_branch}\"]"
-		echo "    remote = <nickname>"
-		echo "    merge = <remote-ref>"
-		test rebase = "$op_type" &&
-			echo "    rebase = true"
-		echo
-		echo "    [remote \"<nickname>\"]"
-		echo "    url = <url>"
-		echo "    fetch = <refspec>"
-		echo
-		echo "See git-config(1) for details."
+	elif [ -z "$curr_branch" -o -z "$upstream" ]; then
+		. git-parse-remote
+		error_on_missing_default_upstream "pull" $op_type $op_prep \
+			"git pull <repository> <refspec>"
 	else
 		echo "Your configuration specifies to $op_type $op_prep the ref '${upstream#refs/heads/}'"
 		echo "from the remote, but no such ref was fetched."
@@ -192,13 +186,10 @@ test true = "$rebase" && {
 		# On an unborn branch
 		if test -f "$GIT_DIR/index"
 		then
-			die "updating an unborn branch with changes added to the index"
+			die "$(gettext "updating an unborn branch with changes added to the index")"
 		fi
 	else
-		git update-index --ignore-submodules --refresh &&
-		git diff-files --ignore-submodules --quiet &&
-		git diff-index --ignore-submodules --cached --quiet HEAD -- ||
-		die "refusing to pull with rebase: your working tree is not up-to-date"
+		require_clean_work_tree "pull with rebase" "Please commit or stash them."
 	fi
 	oldremoteref= &&
 	. git-parse-remote &&
@@ -214,7 +205,8 @@ test true = "$rebase" && {
 	done
 }
 orig_head=$(git rev-parse -q --verify HEAD)
-git fetch $verbosity --update-head-ok "$@" || exit 1
+git fetch $verbosity $progress $dry_run $recurse_submodules --update-head-ok "$@" || exit 1
+test -z "$dry_run" || exit 0
 
 curr_head=$(git rev-parse -q --verify HEAD)
 if test -n "$orig_head" && test "$curr_head" != "$orig_head"
@@ -225,17 +217,20 @@ then
 	# $orig_head commit, but we are merging into $curr_head.
 	# First update the working tree to match $curr_head.
 
-	echo >&2 "Warning: fetch updated the current branch head."
-	echo >&2 "Warning: fast-forwarding your working tree from"
-	echo >&2 "Warning: commit $orig_head."
+	(
+		eval_gettext "Warning: fetch updated the current branch head.
+Warning: fast-forwarding your working tree from
+Warning: commit \$orig_head." &&
+		echo
+	) >&2
 	git update-index -q --refresh
 	git read-tree -u -m "$orig_head" "$curr_head" ||
-		die 'Cannot fast-forward your working tree.
+		die "$(eval_gettext "Cannot fast-forward your working tree.
 After making sure that you saved anything precious from
-$ git diff '$orig_head'
+$ git diff \$orig_head
 output, run
 $ git reset --hard
-to recover.'
+to recover.")"
 
 fi
 
@@ -250,11 +245,11 @@ case "$merge_head" in
 ?*' '?*)
 	if test -z "$orig_head"
 	then
-		die "Cannot merge multiple branches into empty head"
+		die "$(gettext "Cannot merge multiple branches into empty head")"
 	fi
 	if test true = "$rebase"
 	then
-		die "Cannot rebase onto multiple branches"
+		die "$(gettext "Cannot rebase onto multiple branches")"
 	fi
 	;;
 esac
@@ -262,8 +257,17 @@ esac
 if test -z "$orig_head"
 then
 	git update-ref -m "initial pull" HEAD $merge_head "$curr_head" &&
-	git read-tree --reset -u HEAD || exit 1
+	git read-tree -m -u HEAD || exit 1
 	exit
+fi
+
+if test true = "$rebase"
+then
+	o=$(git show-branch --merge-base $curr_branch $merge_head $oldremoteref)
+	if test "$oldremoteref" = "$o"
+	then
+		unset oldremoteref
+	fi
 fi
 
 merge_name=$(git fmt-merge-msg $log_arg <"$GIT_DIR/FETCH_HEAD") || exit
@@ -274,8 +278,8 @@ true)
 	;;
 *)
 	eval="git-merge $diffstat $no_commit $squash $no_ff $ff_only"
-	eval="$eval  $log_arg $strategy_args $merge_args"
-	eval="$eval \"\$merge_name\" HEAD $merge_head $verbosity"
+	eval="$eval  $log_arg $strategy_args $merge_args $verbosity $progress"
+	eval="$eval \"\$merge_name\" HEAD $merge_head"
 	;;
 esac
 eval "exec $eval"

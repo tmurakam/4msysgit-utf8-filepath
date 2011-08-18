@@ -5,7 +5,7 @@
 SUBDIRECTORY_OK=Yes
 OPTIONS_KEEPDASHDASH=
 OPTIONS_SPEC="\
-git am [options] [<mbox>|<Maildir>...]
+git am [options] [(<mbox>|<Maildir>)...]
 git am [options] (--resolved | --skip | --abort)
 --
 i,interactive   run interactively
@@ -15,6 +15,8 @@ q,quiet         be quiet
 s,signoff       add a Signed-off-by line to the commit message
 u,utf8          recode into utf8 (default)
 k,keep          pass -k flag to git-mailinfo
+keep-cr         pass --keep-cr flag to git-mailsplit for mbox format
+no-keep-cr      do not pass --keep-cr flag to git-mailsplit independent of am.keepcr
 c,scissors      strip everything before a scissors line
 whitespace=     pass it through git-apply
 ignore-space-change pass it through git-apply
@@ -35,13 +37,14 @@ rerere-autoupdate update the index with reused conflict resolution if possible
 rebasing*       (internal use for git-rebase)"
 
 . git-sh-setup
+. git-sh-i18n
 prefix=$(git rev-parse --show-prefix)
 set_reflog_action am
 require_work_tree
 cd_to_toplevel
 
 git var GIT_COMMITTER_IDENT >/dev/null ||
-	die "You need to set your committer info first"
+	die "$(gettext "You need to set your committer info first")"
 
 if git rev-parse --verify -q HEAD >/dev/null
 then
@@ -50,13 +53,48 @@ else
 	HAS_HEAD=
 fi
 
+cmdline="git am"
+if test '' != "$interactive"
+then
+	cmdline="$cmdline -i"
+fi
+if test '' != "$threeway"
+then
+	cmdline="$cmdline -3"
+fi
+
 sq () {
 	git rev-parse --sq-quote "$@"
 }
 
 stop_here () {
     echo "$1" >"$dotest/next"
+    git rev-parse --verify -q HEAD >"$dotest/abort-safety"
     exit 1
+}
+
+safe_to_abort () {
+	if test -f "$dotest/dirtyindex"
+	then
+		return 1
+	fi
+
+	if ! test -s "$dotest/abort-safety"
+	then
+		return 0
+	fi
+
+	abort_safety=$(cat "$dotest/abort-safety")
+	if test "z$(git rev-parse --verify -q HEAD)" = "z$abort_safety"
+	then
+		return 0
+	fi
+	(
+		gettext "You seem to have moved HEAD since the last 'am' failure.
+Not rewinding to ORIG_HEAD" &&
+		echo
+	) >&2
+	return 1
 }
 
 stop_here_user_resolve () {
@@ -64,18 +102,9 @@ stop_here_user_resolve () {
 	    printf '%s\n' "$resolvemsg"
 	    stop_here $1
     fi
-    cmdline="git am"
-    if test '' != "$interactive"
-    then
-        cmdline="$cmdline -i"
-    fi
-    if test '' != "$threeway"
-    then
-        cmdline="$cmdline -3"
-    fi
-    echo "When you have resolved this problem run \"$cmdline --resolved\"."
-    echo "If you would prefer to skip this patch, instead run \"$cmdline --skip\"."
-    echo "To restore the original branch and stop patching run \"$cmdline --abort\"."
+    eval_gettext "When you have resolved this problem run \"\$cmdline --resolved\".
+If you would prefer to skip this patch, instead run \"\$cmdline --skip\".
+To restore the original branch and stop patching run \"\$cmdline --abort\"."; echo
 
     stop_here $1
 }
@@ -89,7 +118,7 @@ go_next () {
 
 cannot_fallback () {
 	echo "$1"
-	echo "Cannot fall back to three-way merge."
+	gettext "Cannot fall back to three-way merge."; echo
 	exit 1
 }
 
@@ -104,7 +133,7 @@ fall_back_3way () {
 	"$dotest/patch" &&
     GIT_INDEX_FILE="$dotest/patch-merge-tmp-index" \
     git write-tree >"$dotest/patch-merge-base+" ||
-    cannot_fallback "Repository lacks necessary blobs to fall back on 3-way merge."
+    cannot_fallback "$(gettext "Repository lacks necessary blobs to fall back on 3-way merge.")"
 
     say Using index info to reconstruct a base tree...
     if GIT_INDEX_FILE="$dotest/patch-merge-tmp-index" \
@@ -113,8 +142,8 @@ fall_back_3way () {
 	mv "$dotest/patch-merge-base+" "$dotest/patch-merge-base"
 	mv "$dotest/patch-merge-tmp-index" "$dotest/patch-merge-index"
     else
-        cannot_fallback "Did you hand edit your patch?
-It does not apply to blobs recorded in its index."
+	cannot_fallback "$(gettext "Did you hand edit your patch?
+It does not apply to blobs recorded in its index.")"
     fi
 
     test -f "$dotest/patch-merge-index" &&
@@ -122,7 +151,7 @@ It does not apply to blobs recorded in its index."
     orig_tree=$(cat "$dotest/patch-merge-base") &&
     rm -fr "$dotest"/patch-merge-* || exit 1
 
-    say Falling back to patching base and 3-way merge...
+    say "$(gettext "Falling back to patching base and 3-way merge...")"
 
     # This is not so wrong.  Depending on which base we picked,
     # orig_tree may be wildly different from ours, but his_tree
@@ -134,7 +163,7 @@ It does not apply to blobs recorded in its index."
     export GITHEAD_$his_tree
     if test -n "$GIT_QUIET"
     then
-	    export GIT_MERGE_VERBOSITY=0
+	    GIT_MERGE_VERBOSITY=0 && export GIT_MERGE_VERBOSITY
     fi
     git-merge-recursive $orig_tree -- HEAD $his_tree || {
 	    git rerere $allow_rerere_autoupdate
@@ -217,19 +246,19 @@ check_patch_format () {
 split_patches () {
 	case "$patch_format" in
 	mbox)
-		case "$rebasing" in
-		'')
-			keep_cr= ;;
-		?*)
-			keep_cr=--keep-cr ;;
-		esac
+		if test -n "$rebasing" || test t = "$keepcr"
+		then
+		    keep_cr=--keep-cr
+		else
+		    keep_cr=
+		fi
 		git mailsplit -d"$prec" -o"$dotest" -b $keep_cr -- "$@" > "$dotest/last" ||
 		clean_abort
 		;;
 	stgit-series)
 		if test $# -ne 1
 		then
-			clean_abort "Only one StGIT patch series can be applied at once"
+			clean_abort "$(gettext "Only one StGIT patch series can be applied at once")"
 		fi
 		series_dir=`dirname "$1"`
 		series_file="$1"
@@ -281,9 +310,9 @@ split_patches () {
 		;;
 	*)
 		if test -n "$parse_patch" ; then
-			clean_abort "Patch format $patch_format is not supported."
+			clean_abort "$(eval_gettext "Patch format \$patch_format is not supported.")"
 		else
-			clean_abort "Patch format detection failed."
+			clean_abort "$(gettext "Patch format detection failed.")"
 		fi
 		;;
 	esac
@@ -291,12 +320,17 @@ split_patches () {
 
 prec=4
 dotest="$GIT_DIR/rebase-apply"
-sign= utf8=t keep= skip= interactive= resolved= rebasing= abort=
+sign= utf8=t keep= keepcr= skip= interactive= resolved= rebasing= abort=
 resolvemsg= resume= scissors= no_inbody_headers=
 git_apply_opt=
 committer_date_is_author_date=
 ignore_date=
 allow_rerere_autoupdate=
+
+if test "$(git config --bool --get am.keepcr)" = true
+then
+    keepcr=t
+fi
 
 while test $# != 0
 do
@@ -328,7 +362,7 @@ do
 	--rebasing)
 		rebasing=t threeway=t keep=t scissors=f no_inbody_headers=t ;;
 	-d|--dotest)
-		die "-d option is no longer supported.  Do not use."
+		die "$(gettext "-d option is no longer supported.  Do not use.")"
 		;;
 	--resolvemsg)
 		shift; resolvemsg=$1 ;;
@@ -348,6 +382,10 @@ do
 		allow_rerere_autoupdate="$1" ;;
 	-q|--quiet)
 		GIT_QUIET=t ;;
+	--keep-cr)
+		keepcr=t ;;
+	--no-keep-cr)
+		keepcr=f ;;
 	--)
 		shift; break ;;
 	*)
@@ -387,12 +425,12 @@ then
 		false
 		;;
 	esac ||
-	die "previous rebase directory $dotest still exists but mbox given."
+	die "$(eval_gettext "previous rebase directory \$dotest still exists but mbox given.")"
 	resume=yes
 
 	case "$skip,$abort" in
 	t,t)
-		die "Please make up your mind. --skip or --abort?"
+		die "$(gettext "Please make up your mind. --skip or --abort?")"
 		;;
 	t,)
 		git rerere clear
@@ -407,10 +445,11 @@ then
 			exec git rebase --abort
 		fi
 		git rerere clear
-		test -f "$dotest/dirtyindex" || {
+		if safe_to_abort
+		then
 			git read-tree --reset -u HEAD ORIG_HEAD
 			git reset ORIG_HEAD
-		}
+		fi
 		rm -fr "$dotest"
 		exit ;;
 	esac
@@ -418,7 +457,7 @@ then
 else
 	# Make sure we are not given --skip, --resolved, nor --abort
 	test "$skip$resolved$abort" = "" ||
-		die "Resolve operation not in progress, we are not resuming."
+		die "$(gettext "Resolve operation not in progress, we are not resuming.")"
 
 	# Start afresh.
 	mkdir -p "$dotest" || exit
@@ -432,12 +471,12 @@ else
 				set x
 				first=
 			}
-			case "$arg" in
-			/*)
-				set "$@" "$arg" ;;
-			*)
-				set "$@" "$prefix$arg" ;;
-			esac
+			if is_absolute_path "$arg"
+			then
+				set "$@" "$arg"
+			else
+				set "$@" "$prefix$arg"
+			fi
 		done
 		shift
 	fi
@@ -453,6 +492,7 @@ else
 	echo "$sign" >"$dotest/sign"
 	echo "$utf8" >"$dotest/utf8"
 	echo "$keep" >"$dotest/keep"
+	echo "$keepcr" >"$dotest/keepcr"
 	echo "$scissors" >"$dotest/scissors"
 	echo "$no_inbody_headers" >"$dotest/no_inbody_headers"
 	echo "$GIT_QUIET" >"$dotest/quiet"
@@ -477,12 +517,13 @@ case "$resolved" in
 	'')
 		files=$(git ls-files) ;;
 	?*)
-		files=$(git diff-index --cached --name-only HEAD --) ;;
+		files=$(git diff-index --ignore-submodules --cached \
+			--name-only HEAD --) ;;
 	esac || exit
 	if test "$files"
 	then
 		test -n "$HAS_HEAD" && : >"$dotest/dirtyindex"
-		die "Dirty index: cannot apply patches (dirty: $files)"
+		die "$(eval_gettext "Dirty index: cannot apply patches (dirty: \$files)")"
 	fi
 esac
 
@@ -496,6 +537,12 @@ if test "$(cat "$dotest/keep")" = t
 then
 	keep=-k
 fi
+case "$(cat "$dotest/keepcr")" in
+t)
+	keepcr=--keep-cr ;;
+f)
+	keepcr=--no-keep-cr ;;
+esac
 case "$(cat "$dotest/scissors")" in
 t)
 	scissors=--scissors ;;
@@ -535,13 +582,6 @@ then
 	resume=
 fi
 
-if test "$this" -gt "$last"
-then
-	say Nothing to do.
-	rm -fr "$dotest"
-	exit
-fi
-
 while test "$this" -le "$last"
 do
 	msgnum=`printf "%0${prec}d" $this`
@@ -572,9 +612,12 @@ do
 			go_next && continue
 
 		test -s "$dotest/patch" || {
-			echo "Patch is empty.  Was it split wrong?"
+			eval_gettext "Patch is empty.  Was it split wrong?
+If you would prefer to skip this patch, instead run \"\$cmdline --skip\".
+To restore the original branch and stop patching run \"\$cmdline --abort\"."; echo
 			stop_here $this
 		}
+		rm -f "$dotest/original-commit" "$dotest/author-script"
 		if test -f "$dotest/rebasing" &&
 			commit=$(sed -e 's/^From \([0-9a-f]*\) .*/\1/' \
 				-e q "$dotest/$msgnum") &&
@@ -582,6 +625,8 @@ do
 		then
 			git cat-file commit "$commit" |
 			sed -e '1,/^$/d' >"$dotest/msg-clean"
+			echo "$commit" > "$dotest/original-commit"
+			get_author_ident_from_commit "$commit" > "$dotest/author-script"
 		else
 			{
 				sed -n '/^Subject/ s/Subject: //p' "$dotest/info"
@@ -593,13 +638,18 @@ do
 		;;
 	esac
 
-	GIT_AUTHOR_NAME="$(sed -n '/^Author/ s/Author: //p' "$dotest/info")"
-	GIT_AUTHOR_EMAIL="$(sed -n '/^Email/ s/Email: //p' "$dotest/info")"
-	GIT_AUTHOR_DATE="$(sed -n '/^Date/ s/Date: //p' "$dotest/info")"
+	if test -f "$dotest/author-script"
+	then
+		eval $(cat "$dotest/author-script")
+	else
+		GIT_AUTHOR_NAME="$(sed -n '/^Author/ s/Author: //p' "$dotest/info")"
+		GIT_AUTHOR_EMAIL="$(sed -n '/^Email/ s/Email: //p' "$dotest/info")"
+		GIT_AUTHOR_DATE="$(sed -n '/^Date/ s/Date: //p' "$dotest/info")"
+	fi
 
 	if test -z "$GIT_AUTHOR_EMAIL"
 	then
-		echo "Patch does not have a valid e-mail address."
+		gettext "Patch does not have a valid e-mail address."; echo
 		stop_here $this
 	fi
 
@@ -637,7 +687,8 @@ do
 		case "$resolved$interactive" in
 		tt)
 			# This is used only for interactive view option.
-			git diff-index -p --cached HEAD -- >"$dotest/patch"
+			git diff-index --ignore-submodules -p --cached \
+				HEAD -- >"$dotest/patch"
 			;;
 		esac
 	esac
@@ -646,15 +697,18 @@ do
 	if test "$interactive" = t
 	then
 	    test -t 0 ||
-	    die "cannot be interactive without stdin connected to a terminal."
+	    die "$(gettext "cannot be interactive without stdin connected to a terminal.")"
 	    action=again
 	    while test "$action" = again
 	    do
-		echo "Commit Body is:"
+		gettext "Commit Body is:"; echo
 		echo "--------------------------"
 		cat "$dotest/final-commit"
 		echo "--------------------------"
-		printf "Apply? [y]es/[n]o/[e]dit/[v]iew patch/[a]ccept all "
+		# TRANSLATORS: Make sure to include [y], [n], [e], [v] and [a]
+		# in your translation. The program will only accept English
+		# input at this point.
+		gettext "Apply? [y]es/[n]o/[e]dit/[v]iew patch/[a]ccept all "
 		read reply
 		case "$reply" in
 		[yY]*) action=yes ;;
@@ -670,7 +724,13 @@ do
 	else
 	    action=yes
 	fi
-	FIRSTLINE=$(sed 1q "$dotest/final-commit")
+
+	if test -f "$dotest/final-commit"
+	then
+		FIRSTLINE=$(sed 1q "$dotest/final-commit")
+	else
+		FIRSTLINE=""
+	fi
 
 	if test $action = skip
 	then
@@ -684,7 +744,7 @@ do
 		stop_here $this
 	fi
 
-	say "Applying: $FIRSTLINE"
+	say "$(eval_gettext "Applying: \$FIRSTLINE")"
 
 	case "$resolved" in
 	'')
@@ -704,15 +764,17 @@ do
 		# trust what the user has in the index file and the
 		# working tree.
 		resolved=
-		git diff-index --quiet --cached HEAD -- && {
-			echo "No changes - did you forget to use 'git add'?"
+		git diff-index --ignore-submodules --quiet --cached HEAD -- && {
+			gettext "No changes - did you forget to use 'git add'?
+If there is nothing left to stage, chances are that something else
+already introduced the same changes; you might want to skip this patch."; echo
 			stop_here_user_resolve $this
 		}
 		unmerged=$(git ls-files -u)
 		if test -n "$unmerged"
 		then
-			echo "You still have unmerged paths in your index"
-			echo "did you forget to use 'git add'?"
+			gettext "You still have unmerged paths in your index
+did you forget to use 'git add'?"; echo
 			stop_here_user_resolve $this
 		fi
 		apply_status=0
@@ -720,14 +782,15 @@ do
 		;;
 	esac
 
-	if test $apply_status = 1 && test "$threeway" = t
+	if test $apply_status != 0 && test "$threeway" = t
 	then
 		if (fall_back_3way)
 		then
 		    # Applying the patch to an earlier tree and merging the
 		    # result may have produced the same tree as ours.
-		    git diff-index --quiet --cached HEAD -- && {
-			say No changes -- Patch already applied.
+		    git diff-index --ignore-submodules --quiet --cached \
+				HEAD -- && {
+			say "$(gettext "No changes -- Patch already applied.")"
 			go_next
 			continue
 		    }
@@ -737,7 +800,7 @@ do
 	fi
 	if test $apply_status != 0
 	then
-		printf 'Patch failed at %s %s\n' "$msgnum" "$FIRSTLINE"
+		eval_gettext 'Patch failed at $msgnum $FIRSTLINE'; echo
 		stop_here_user_resolve $this
 	fi
 
@@ -753,7 +816,7 @@ do
 			GIT_AUTHOR_DATE=
 		fi
 		parent=$(git rev-parse --verify -q HEAD) ||
-		say >&2 "applying to an empty history"
+		say >&2 "$(gettext "applying to an empty history")"
 
 		if test -n "$committer_date_is_author_date"
 		then
@@ -765,6 +828,10 @@ do
 	git update-ref -m "$GIT_REFLOG_ACTION: $FIRSTLINE" HEAD $commit $parent ||
 	stop_here $this
 
+	if test -f "$dotest/original-commit"; then
+		echo "$(cat "$dotest/original-commit") $commit" >> "$dotest/rewritten"
+	fi
+
 	if test -x "$GIT_DIR"/hooks/post-applypatch
 	then
 		"$GIT_DIR"/hooks/post-applypatch
@@ -772,6 +839,13 @@ do
 
 	go_next
 done
+
+if test -s "$dotest"/rewritten; then
+    git notes copy --for-rewrite=rebase < "$dotest"/rewritten
+    if test -x "$GIT_DIR"/hooks/post-rewrite; then
+	"$GIT_DIR"/hooks/post-rewrite rebase < "$dotest"/rewritten
+    fi
+fi
 
 rm -fr "$dotest"
 git gc --auto

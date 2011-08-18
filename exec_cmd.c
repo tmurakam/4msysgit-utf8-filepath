@@ -3,7 +3,6 @@
 #include "quote.h"
 #define MAX_ARGS	32
 
-extern char **environ;
 static const char *argv_exec_path;
 static const char *argv0_path;
 
@@ -90,7 +89,7 @@ static void add_path(struct strbuf *out, const char *path)
 		if (is_absolute_path(path))
 			strbuf_addstr(out, path);
 		else
-			strbuf_addstr(out, make_nonrelative_path(path));
+			strbuf_addstr(out, absolute_path(path));
 
 		strbuf_addch(out, PATH_SEP);
 	}
@@ -107,7 +106,7 @@ void setup_path(void)
 	if (old_path)
 		strbuf_addstr(&new_path, old_path);
 	else
-		strbuf_addstr(&new_path, "/usr/local/bin:/usr/bin:/bin");
+		strbuf_addstr(&new_path, _PATH_DEFPATH);
 
 	setenv("PATH", new_path.buf, 1);
 

@@ -2,11 +2,6 @@
 
 . ./test-lib.sh
 
-if ! test_have_prereq PERL; then
-	say 'skipping --patch tests, perl not available'
-	test_done
-fi
-
 set_state () {
 	echo "$3" > "$1" &&
 	git add "$1" &&
